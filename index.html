@@ -215,6 +215,19 @@ document.getElementById('btn-next').addEventListener('click', function(e) {
 
 /* Init: show slide 1 immediately */
 showSlide(0);
+
+/* Preload all images and videos in background after page loads */
+window.addEventListener('load', function() {
+  SLIDES.forEach(function(slide) {
+    var img = new Image();
+    img.src = slide.image;
+    if (slide.transition_out) {
+      var v = document.createElement('video');
+      v.preload = 'auto';
+      v.src = slide.transition_out;
+    }
+  });
+});
 </script>
 </body>
 </html>
