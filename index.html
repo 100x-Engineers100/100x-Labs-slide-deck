@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Presentation</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; height: 100vh; overflow: hidden; }
+#stage { position: fixed; inset: 0; background: #000; }
+
+/* img is the slide — always present, z:1 */
+#slide-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  z-index: 1;
+  background: #000;
+}
+
+/* video overlays on top during transition, z:2 */
+#transition-video {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  object-fit: contain;
+  z-index: 2;
+  display: none;
+}
+
+/* minimal bottom nav */
+#nav-bar {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  gap: 32px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#stage:hover #nav-bar { opacity: 1; }
+.nav-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.6);
+  font-size: 1.4rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  user-select: none;
+  transition: color 0.15s;
+}
+.nav-btn:hover { color: #fff; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="slide-img" src="" alt=""/>
+  <video id="transition-video" playsinline></video>
+  <div id="nav-bar">
+    <button class="nav-btn" id="btn-prev">&#8592;</button>
+    <button class="nav-btn" id="btn-next">&#8594;</button>
+  </div>
+</div>
+<script>
+const SLIDES = [
+  {id:1,  image:"images/slide_01.png", transition_out:"transitions/t_01_02.mp4"},
+  {id:2,  image:"images/slide_02.png", transition_out:"transitions/t_02_03.mp4"},
+  {id:3,  image:"images/slide_03.png", transition_out:"transitions/t_03_04.mp4"},
+  {id:4,  image:"images/slide_04.png", transition_out:"transitions/t_04_05.mp4"},
+  {id:5,  image:"images/slide_05.png", transition_out:"transitions/t_05_06.mp4"},
+  {id:6,  image:"images/slide_06.png", transition_out:"transitions/t_06_07.mp4"},
+  {id:7,  image:"images/slide_07.png", transition_out:"transitions/t_07_08.mp4"},
+  {id:8,  image:"images/slide_08.png", transition_out:"transitions/t_08_09.mp4"},
+  {id:9,  image:"images/slide_09.png", transition_out:"transitions/t_09_10.mp4"},
+  {id:10, image:"images/slide_10.png", transition_out:"transitions/t_10_11.mp4"},
+  {id:11, image:"images/slide_11.png", transition_out:"transitions/t_11_12.mp4"},
+  {id:12, image:"images/slide_12.png", transition_out:"transitions/t_12_13.mp4"},
+  {id:13, image:"images/slide_13.png", transition_out:"transitions/t_13_14.mp4"},
+  {id:14, image:"images/slide_14.png", transition_out:"transitions/t_14_15.mp4"},
+  {id:15, image:"images/slide_15.png", transition_out:"transitions/t_15_16.mp4"},
+  {id:16, image:"images/slide_16.png", transition_out:"transitions/t_16_17.mp4"},
+  {id:17, image:"images/slide_17.png", transition_out:"transitions/t_17_18.mp4"},
+  {id:18, image:"images/slide_18.png", transition_out:"transitions/t_18_19.mp4"},
+  {id:19, image:"images/slide_19.png", transition_out:"transitions/t_19_20.mp4"},
+  {id:20, image:"images/slide_20.png", transition_out:null}
+];
+
+const img = document.getElementById('slide-img');
+const vid = document.getElementById('transition-video');
+let current = 0;
+let busy = false;
+let revealGen = 0;
+
+/* Show slide i: just set img src. img is always visible. */
+function showSlide(i) {
+  img.src = SLIDES[i].image;
+  current = i;
+}
+
+function nextSlide() {
+  if (busy) return;
+  if (current >= SLIDES.length - 1) return;
+
+  const slide = SLIDES[current];
+  const nextIndex = current + 1;
+
+  if (!slide.transition_out) {
+    showSlide(nextIndex);
+    return;
+  }
+
+  busy = true;
+
+  /* clear stale handlers before touching src */
+  vid.onended = null;
+  vid.onerror = null;
+
+  /* Preload next slide image in background */
+  const pre = new Image();
+  pre.src = SLIDES[nextIndex].image;
+
+  const myGen = ++revealGen;
+
+  function reveal() {
+    if (revealGen !== myGen) return;
+    vid.onended = null;
+    vid.onerror = null;
+    vid.style.display = 'none';
+    vid.src = '';
+    busy = false;
+  }
+
+  function onVideoEnd() {
+    /* Video last frame still covering screen. Swap img behind it. */
+    img.src = SLIDES[nextIndex].image;
+    current = nextIndex;
+
+    /* Wait for decode to finish before revealing — prevents slide-1 flash */
+    if (img.decode) {
+      img.decode().then(reveal).catch(reveal);
+    } else {
+      requestAnimationFrame(function() { requestAnimationFrame(reveal); });
+    }
+  }
+
+  function onVideoError() {
+    vid.onended = null;
+    vid.onerror = null;
+    vid.style.display = 'none';
+    vid.src = '';
+    showSlide(nextIndex);
+    busy = false;
+  }
+
+  /* Show video on top — img (slide 1) still visible underneath */
+  vid.src = slide.transition_out;
+  vid.load();
+  vid.style.display = 'block';
+
+  vid.onended = onVideoEnd;
+  vid.onerror = onVideoError;
+
+  vid.play().catch(function(err) {
+    if (err && err.name === 'AbortError') return; /* paused by prevSlide, ignore */
+    onVideoError();
+  });
+}
+
+function prevSlide() {
+  if (current === 0) return;
+  /* abort any playing transition */
+  if (busy) {
+    revealGen++; /* invalidate any pending reveal() */
+    vid.pause();
+    vid.onended = null;
+    vid.onerror = null;
+    vid.style.display = 'none';
+    vid.src = '';
+    busy = false;
+  }
+  showSlide(current - 1);
+}
+
+/* Keyboard controls */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'ArrowRight' || e.key === ' ') {
+    e.preventDefault();
+    nextSlide();
+  } else if (e.key === 'ArrowLeft') {
+    prevSlide();
+  } else if (e.key === 'f' || e.key === 'F') {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function() {});
+    } else {
+      document.exitFullscreen();
+    }
+  }
+});
+
+/* Click anywhere to advance (but not the nav bar area) */
+document.getElementById('stage').addEventListener('click', function(e) {
+  if (e.target.closest('#nav-bar')) return;
+  nextSlide();
+});
+
+document.getElementById('btn-prev').addEventListener('click', function(e) {
+  e.stopPropagation();
+  prevSlide();
+});
+document.getElementById('btn-next').addEventListener('click', function(e) {
+  e.stopPropagation();
+  nextSlide();
+});
+
+/* Init: show slide 1 immediately */
+showSlide(0);
+</script>
+</body>
+</html>
